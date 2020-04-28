@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <math.h>
+#include <signal.h>
+#include <ctype.h> 
 
 
 
@@ -31,13 +33,16 @@ char* convertNumberIntoArray(unsigned int number);
 void loadData(char* fileName, applicants* applicantList);
 void removeStringTrailingNewline(char* str);
 char* numsToStr(char* nums);
+char* numToDay(int idx);
 void strToNum(char* str, int* nums);
 void printMenu();
 void printDays();
 void printFreeDays();
+void handler(int signumber);
 
 char fileName[] = "applicantsdata.txt";
 int limit[7] = { 10, 8, 5, 4, 5, 6, 7 };
+int needed[7] = { 9, 7, 4, 4, 4, 5, 4 };
 int workers[7] = { 0,0,0,0,0,0,0 };
 
 int main() {
@@ -101,59 +106,190 @@ void loadMenu(applicants* applicantList, int size) {
 		}
 	}
 }
+void handler(int signumber) {
+	//printf("Signal with number %i has arrived\n", signumber);
+}
+
 void sendToOffice(applicants* applicantList, int size) {
 	//Jenő telek, Lovas dűlő, Hosszú, Selyem telek, Malom telek és Szula
 	//metszés, rügyfakasztó permetezés, tavaszi nyitás, horolás
 	char area[5][30] = { "Jeno telek", "Lovas dulo", "Selyem telek", "Malom telek", "Szula" };
 	char operation[4][30] = { "metszes", "rugyfakaszto permetezes", "tavaszi nyitas", "horolas" };
 
-
+	signal(SIGTERM, handler);
 
 	int pipefd[2]; // unnamed pipe file descriptor array
-	pid_t pid;//=child
+	int pipefd2[2]; // unnamed pipe file descriptor array
 
+	int status;
+	if (pipe(pipefd) < 0 || pipe(pipefd2)) { perror("Hiba a pipe nyitaskor!"); exit(EXIT_FAILURE); }
 
-	if (pipe(pipefd) < 0)
-	{
-		perror("Hiba a pipe nyitaskor!");
-		exit(EXIT_FAILURE);
-	}
-	pid = fork();	// creating parent-child processes
-	if (pid < 0)
-	{
-		perror("Fork hiba");
-		exit(EXIT_FAILURE);
-	}
-	if (pid > 0) {
-		printf("\nSzulo indul!\n");
+	pid_t child = fork();	// creating parent-child processes
+	if (child < 0) { perror("Fork hiba"); exit(EXIT_FAILURE); }
+	if (child > 0) {
+		printf("\nSzulo1 indul!\n");
 		sleep(1);
 		close(pipefd[1]);  //Usually we close the unused write end
+
 		char olvas[5][2][30];
+		char munka[2][30];
+		int len = 0;
 
-
+		printf("\n\nGAZDATISZT OLVASTA AZ UZENETET:\n");
 		int i = 0;
 		while (i < 5) {
 			char sz[30];
 			char sz2[30];
-			int len;
+
 			read(pipefd[0], &len, sizeof(int));
 			read(pipefd[0], olvas[i][0], len); // reading max 100 chars
 
 			read(pipefd[0], &len, sizeof(int));
 			read(pipefd[0], olvas[i][1], len); // reading max 100 chars
-			printf("Gazdatiszt olvasta uzenetet:   %s : %s\n", olvas[i][0], olvas[i][1]);
+			printf("%s : %s\n", olvas[i][0], olvas[i][1]);
 			++i;
 		}
+
+		read(pipefd[0], &len, sizeof(int));
+		read(pipefd[0], munka[0], len); // reading max 100 chars
+		read(pipefd[0], &len, sizeof(int));
+		read(pipefd[0], munka[1], len); // reading max 100 chars
+
+		printf("\nMai melo:   %s : %s\n", munka[0], munka[1]);
 		close(pipefd[0]); // Closing write descriptor 
-		printf("Szulo beirta az adatokat a csobe! \n");
+		//printf("\nSzulo beirta az adatokat a csobe! \n");
 		fflush(NULL); 	// flushes all write buffers (not necessary)
-		wait();		// waiting for child process (not necessary)
-		 // try it without wait()
-		printf("Szulo befejezte!\n");
+		sleep(1);
+		kill(child, SIGKILL);
+
+		//waitpid(child, &status, 0);
+		//wait(&status);
+		pid_t child2 = fork();
+		if (child2 < 0) { perror("The fork2 calling was not succesful\n"); exit(1); }
+		if (child2 > 0) //the parent process, vezetés
+		{
+			waitpid(child, &status, 0);
+
+			printf("\nSzulo2 indul! \n");
+			close(pipefd2[0]);
+
+			srand(time(0));
+			int ranDay = rand() % 7 + 1;
+
+			int i;
+			int len = 0;
+			int num = 0;
+			for (i = 0; i < size; ++i) {
+				int j;
+				for (j = 0; j < 7; ++j) {
+					if (applicantList[i].daysInNum[j] == ranDay) {
+						num++;
+					}
+				}
+			}
+			write(pipefd2[1], &ranDay, sizeof(int));
+			write(pipefd2[1], &num, sizeof(int));
+			num = 0;
+			for (i = 0; i < size; ++i) {
+				int j;
+				for (j = 0; j < 7; ++j) {
+					if (applicantList[i].daysInNum[j] == ranDay) {
+						printf("%d. jelentkezo: %s\n", num + 1, applicantList[i].name);
+						len = strlen(applicantList[i].name) + 1;
+						write(pipefd2[1], &len, sizeof(int));
+						write(pipefd2[1], applicantList[i].name, len);
+						num++;
+					}
+				}
+			}
+
+
+
+			len = strlen(munka[0]) + 1;
+			write(pipefd2[1], &len, sizeof(int));
+			write(pipefd2[1], munka[0], len);
+
+			len = strlen(munka[1]) + 1;
+			write(pipefd2[1], &len, sizeof(int));
+			write(pipefd2[1], munka[1], len);
+
+			//printf("\nHELY KESZ %s, %s\n", munka[0], munka[1]);
+			//waitpid(child2, &status, 0);
+			fflush(NULL);
+			close(pipefd2[1]);
+			sleep(3);
+			kill(child2, SIGKILL);
+			//printf("\nSzulo2 befejezte!\n");
+			//waitpid(child, &status, 0);
+
+			printf("\nSzulo2 befejezte!\n");
+		}
+		else //child2 process, vezető munkásjárat
+		{
+			printf("\nGyerek2 indul!\n");
+			close(pipefd2[1]);
+			sleep(1);
+
+			char melo[2][30];
+
+			int s = 0;
+			int day = 0;
+			int i = 0;
+			read(pipefd2[0], &day, sizeof(int));
+			read(pipefd2[0], &s, sizeof(int));
+			//printf("\nMEGKAPTAM %i\n", s);
+			if (s == 0) {
+				printf("\n\nA MAI NAPRA NEM JOTT SENKI DOLGOZNI:\n");
+			}
+
+			else { printf("\n\n%s NAPON JARATVEZETO OLVASTA AZ UTASLISTAT:\n", numToDay(day)); }
+
+			len = 0;
+			char app[s][30];
+			while (i < s) {
+				read(pipefd2[0], &len, sizeof(int));
+				read(pipefd2[0], app[i], len);
+				printf("Gyerek2 olvasta uzenetet:   %s\n", app[i]);
+				++i;
+			}
+
+
+			read(pipefd2[0], &len, sizeof(int));
+			read(pipefd2[0], melo[0], len); // reading max 100 chars
+
+			read(pipefd2[0], &len, sizeof(int));
+			read(pipefd2[0], melo[1], len); // reading max 100 chars
+
+			printf("\n\nJARATVEZETO OLVASTA A MELOHELYET: %s, TEENDO: %s\n", melo[0], melo[1]);
+			//printf("\nMai melo helye:   %s, ideje: %s\n", melo[0], melo[1]);
+			close(pipefd2[0]);
+
+			int needWork = needed[day] - workers[day];
+			printf("\n\nENNYI kell: %i", needWork);
+			srand(time(0));
+			i = 0;
+			if (needWork > 0) {
+				while (i < needWork + 1) {
+					int ran = rand() % size;
+					printf("\n\nA KISORSOLT SZERENCSES EMBER:        %s", applicantList[ran].name);
+					++i;
+				}
+			}
+
+
+
+
+			pause();
+			printf("\nGyerek2 befejezte!\n");
+		}
+		sleep(2);
+		waitpid(child, &status, 0);
+		waitpid(child2, &status, 0);
+		printf("Szulo1 befejezte!\n");
 	}
 
 	else {
-		printf("\nGyerek indul!\n");
+		printf("\nGyerek1 indul!\n");
 		close(pipefd[0]);
 
 		char pair[5][2][30];
@@ -185,12 +321,21 @@ void sendToOffice(applicants* applicantList, int size) {
 			//printf("Gyerek kuldi: %s\n", pair[i][1]);
 			++i;
 		}
-		printf("Gyerek beirta az adatokat a csobe!\n");
-		fflush(NULL);
-		close(pipefd[1]);
 
-		//sleep(2);
+		int r = rand() % 5;
+
+		len = strlen(pair[r][0]) + 1;
+		write(pipefd[1], &len, sizeof(int));
+		write(pipefd[1], pair[r][0], len);
+
+		len = strlen(pair[r][1]) + 1;
+		write(pipefd[1], &len, sizeof(int));
+		write(pipefd[1], pair[r][1], len);
+
+		close(pipefd[1]);
+		printf("\nGyerek1 befejezte!\n");
 	}
+	//waitpid(child, &status, 0);
 }
 
 
@@ -466,29 +611,27 @@ int dayToNum(char command[], int size) {
 
 }
 
-char* numToDay(int nums[], int size) {
-	size_t i;
-	char days[100];
+char* numToDay(int idx) {
 
-	if (nums[i] == 1) {
+	if (idx == 1) {
 		return "hétfő";
 	}
-	else if (nums[i] == 2) {
+	else if (idx == 2) {
 		return "kedd";
 	}
-	else if (nums[i] == 3) {
+	else if (idx == 3) {
 		return "szerda";
 	}
-	else if (nums[i] == 4) {
+	else if (idx == 4) {
 		return "csütörtök";
 	}
-	else if (nums[i] == 5) {
+	else if (idx == 5) {
 		return "péntek";
 	}
-	else if (nums[i] == 6) {
+	else if (idx == 6) {
 		return "szombat";
 	}
-	else if (nums[i] == 7) {
+	else if (idx == 7) {
 		return "vasárnap";
 	}
 	else {
@@ -517,20 +660,7 @@ bool contDays(char* nums, int day) {
 	return false;
 }
 
-//void numsToStr(char* text, char* nums) {
-//	char str[8];
-//	sprintf(str, "%d%d%d%d%d%d%d", nums[0], nums[1], nums[2], nums[3], nums[4], nums[5], nums[6]);
-//	
-//	str[7] = '\0';
-//	printf("szam: %s", str);
-//	return &str;
-//
-//	char d[8];
-//	strcat(d, numsToStr(applicantList[i].daysInNum));
-//	printf("szamokkkkkk: %s\n", d);
-//	strcat(applicantText, d);
-//	strcat(applicantText, ";");
-//}
+
 
 
 void getApplicantsByPlace(applicants* applicantList, int size) {
@@ -549,10 +679,10 @@ void getApplicantsByPlace(applicants* applicantList, int size) {
 
 
 
-	printf("\n\n\n----------Utasok listazasa hely szerint----------\n\n");
-	printf("Add meg melyik helyszin szerint szeretnel listazni!\n");
+	printf("\n\n\n----------Jelentkezok listazasa nap szerint----------\n\n");
+	printf("Add meg melyik nap szerint szeretnel listazni!\n");
 	printDays();
-	printf("8.) Osszes helyszin listazasa\n");
+	printf("8.) Osszes nap listazasa\n");
 	printf("\nValasztott hely: ");
 	while (c != 1 || c != 2 || c != 3 || c != 4 || c != 5 || c != 6 || c != 7 || c != 8) {
 		scanf("\n%c", &c);
@@ -746,16 +876,6 @@ void loadData(char* fileName, applicants* applicantList) {
 }
 
 
-//char* convertNumberIntoArray(unsigned int number) {
-//	unsigned int length = (int)(log10((float)number)) + 1;
-//	char* arr = (char*)malloc(length * sizeof(char)), * curr = arr;
-//	do {
-//		*curr++ = number % 10;
-//		number /= 10;
-//	} while (number != 0);
-//	return arr;
-//}
-
 
 void printMenu() {
 	printf("\n\n\n\n--------------------MENU--------------------\n\n");
@@ -787,3 +907,30 @@ void printFreeDays() {
 }
 
 
+//void numsToStr(char* text, char* nums) {
+//	char str[8];
+//	sprintf(str, "%d%d%d%d%d%d%d", nums[0], nums[1], nums[2], nums[3], nums[4], nums[5], nums[6]);
+//	
+//	str[7] = '\0';
+//	printf("szam: %s", str);
+//	return &str;
+//
+//	char d[8];
+//	strcat(d, numsToStr(applicantList[i].daysInNum));
+//	printf("szamokkkkkk: %s\n", d);
+//	strcat(applicantText, d);
+//	strcat(applicantText, ";");
+//}
+
+
+
+
+//char* convertNumberIntoArray(unsigned int number) {
+//	unsigned int length = (int)(log10((float)number)) + 1;
+//	char* arr = (char*)malloc(length * sizeof(char)), * curr = arr;
+//	do {
+//		*curr++ = number % 10;
+//		number /= 10;
+//	} while (number != 0);
+//	return arr;
+//}
