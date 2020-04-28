@@ -17,6 +17,7 @@ typedef struct {
 
 int MAX_SIZE = 100;
 
+void sendToOffice(applicants* applicantList, int size);
 void addApplicant(applicants* applicantList, int size);
 void modifyApplicant(applicants* applicantList, int size);
 int deleteApplicant(applicants* applicantList, int size);
@@ -57,7 +58,7 @@ void loadMenu(applicants* applicantList, int size) {
 	char s = 0;
 	printf("\n\nA rendszerben jelenleg %d jelentkezot regisztraltak\n", getFileSize(fileName));
 	printMenu();
-	while (s != 5) {
+	while (s != 6) {
 
 		scanf("\n%c", &s);
 		switch (s) {
@@ -88,6 +89,11 @@ void loadMenu(applicants* applicantList, int size) {
 			printMenu();
 			break;
 		case '5':
+			sendToOffice(applicantList, size);
+			sleep(3);
+			printMenu();
+			break;
+		case '6':
 			printf("\nViszont latasra!\n");
 			exit(1);
 		default:
@@ -95,6 +101,98 @@ void loadMenu(applicants* applicantList, int size) {
 		}
 	}
 }
+void sendToOffice(applicants* applicantList, int size) {
+	//Jenő telek, Lovas dűlő, Hosszú, Selyem telek, Malom telek és Szula
+	//metszés, rügyfakasztó permetezés, tavaszi nyitás, horolás
+	char area[5][30] = { "Jeno telek", "Lovas dulo", "Selyem telek", "Malom telek", "Szula" };
+	char operation[4][30] = { "metszes", "rugyfakaszto permetezes", "tavaszi nyitas", "horolas" };
+
+
+
+	int pipefd[2]; // unnamed pipe file descriptor array
+	pid_t pid;//=child
+
+
+	if (pipe(pipefd) < 0)
+	{
+		perror("Hiba a pipe nyitaskor!");
+		exit(EXIT_FAILURE);
+	}
+	pid = fork();	// creating parent-child processes
+	if (pid < 0)
+	{
+		perror("Fork hiba");
+		exit(EXIT_FAILURE);
+	}
+	if (pid > 0) {
+		printf("\nSzulo indul!\n");
+		sleep(1);
+		close(pipefd[1]);  //Usually we close the unused write end
+		char olvas[5][2][30];
+
+
+		int i = 0;
+		while (i < 5) {
+			char sz[30];
+			char sz2[30];
+			int len;
+			read(pipefd[0], &len, sizeof(int));
+			read(pipefd[0], olvas[i][0], len); // reading max 100 chars
+
+			read(pipefd[0], &len, sizeof(int));
+			read(pipefd[0], olvas[i][1], len); // reading max 100 chars
+			printf("Gazdatiszt olvasta uzenetet:   %s : %s\n", olvas[i][0], olvas[i][1]);
+			++i;
+		}
+		close(pipefd[0]); // Closing write descriptor 
+		printf("Szulo beirta az adatokat a csobe! \n");
+		fflush(NULL); 	// flushes all write buffers (not necessary)
+		wait();		// waiting for child process (not necessary)
+		 // try it without wait()
+		printf("Szulo befejezte!\n");
+	}
+
+	else {
+		printf("\nGyerek indul!\n");
+		close(pipefd[0]);
+
+		char pair[5][2][30];
+		srand(time(0));
+
+		int i;
+		for (i = 0; i < 5; ++i) {
+
+			int r = rand() % 4;
+
+			strcpy(pair[i][0], area[i]);
+			strcpy(pair[i][1], operation[r]);
+			printf("\n%s : %s", pair[i][0], pair[i][1]);
+		}
+		printf("\n\n");
+
+
+		int len = 0;
+		i = 0;
+		while (i < 5) {
+			len = strlen(pair[i][0]) + 1;
+			write(pipefd[1], &len, sizeof(int));
+			write(pipefd[1], pair[i][0], len);
+			//printf("Gyerek kuldi: %s\n", pair[i][0]);
+
+			len = strlen(pair[i][1]) + 1;
+			write(pipefd[1], &len, sizeof(int));
+			write(pipefd[1], pair[i][1], len);
+			//printf("Gyerek kuldi: %s\n", pair[i][1]);
+			++i;
+		}
+		printf("Gyerek beirta az adatokat a csobe!\n");
+		fflush(NULL);
+		close(pipefd[1]);
+
+		//sleep(2);
+	}
+}
+
 
 
 void addApplicant(applicants* applicantList, int size) {
@@ -111,7 +209,7 @@ void addApplicant(applicants* applicantList, int size) {
 	applicantList[size].address[0] = 0;
 	applicantList[size].days[0] = 0;
 
-	
+
 
 	printf("\n\n\n----------Uj jelentkezo felvetele----------\n\n");
 
@@ -128,9 +226,9 @@ void addApplicant(applicants* applicantList, int size) {
 	printFreeDays();
 
 	printf("\n\nKerlek add meg azokat a napokat, amelyeken szeretnel dolgozni, szokozzel elvalasztva, ekezettel!\npl.:hétfő szerda vasárnap\n\nNapok: ");
-	
-	
-	
+
+
+
 	bool goodInput = false;
 	while (!goodInput) {
 		char days[100];
@@ -142,7 +240,7 @@ void addApplicant(applicants* applicantList, int size) {
 		char* token = strtok(days, " ");
 		// loop through the string to extract all other tokens
 		int i = 0;
-		int num[7] = {9,9,9,9,9,9,9};
+		int num[7] = { 9,9,9,9,9,9,9 };
 		while (token != NULL) {
 			int temp = 0;
 			removeStringTrailingNewline(token);
@@ -150,7 +248,7 @@ void addApplicant(applicants* applicantList, int size) {
 			if (contDays(num, temp)) {
 				num[i] = 0;
 			}
-			else if (limit[temp-1] - workers[temp-1] < 1) {
+			else if (limit[temp - 1] - workers[temp - 1] < 1) {
 				num[i] = 8;
 			}
 			else {
@@ -161,7 +259,7 @@ void addApplicant(applicants* applicantList, int size) {
 			++i;
 			token = strtok(NULL, " ");
 		}
-		
+
 		bool success = true;
 		for (i = 0; i < 7; i++) {
 			if (num[i] == 0) {
@@ -173,13 +271,13 @@ void addApplicant(applicants* applicantList, int size) {
 				printf("\n\A megadott napok valamelyike betelt, adjon meg mas napokat!\nNapok: ");
 			}
 		}
-		if (success) {			
+		if (success) {
 			goodInput = !goodInput;
 			int j;
 			for (j = 0; j < 7; j++) {
 				applicantList[size].daysInNum[j] = num[j];
 				if (num[j] < 8) {
-					workers[num[j]-1]++;
+					workers[num[j] - 1]++;
 				}
 				//printf("%d", applicantList[size].daysInNum[j]);
 			}
@@ -190,7 +288,7 @@ void addApplicant(applicants* applicantList, int size) {
 	printf("\n\nFelvett szemely adatai:\n   Nev: %s\n   Cim: %s\n   Kivalasztott napok: %s\n", applicantList[size].name, applicantList[size].address, applicantList[size].days);
 	printf("\nSikeres felvetel!\n");
 	printf("Visszateres a menube..\n\n\n");
-		
+
 }
 
 void modifyApplicant(applicants* applicantList, int size) {
@@ -223,7 +321,7 @@ void modifyApplicant(applicants* applicantList, int size) {
 				printFreeDays();
 
 				printf("\n\nKerlek add meg azokat a napokat, amelyeken szeretnel dolgozni, szokozzel elvalasztva, ekezettel!\npl.:hétfő szerda vasárnap\n\nNapok: ");
-				
+
 
 				bool goodInput = false;
 				while (!goodInput) {
@@ -281,7 +379,7 @@ void modifyApplicant(applicants* applicantList, int size) {
 			}
 			break;
 		}
-		
+
 	}
 	if (findApplicant == 0) {
 		printf("\nNincs ilyen nevu ugyfel! \n");
@@ -368,10 +466,10 @@ int dayToNum(char command[], int size) {
 
 }
 
-char * numToDay(int nums[], int size) {
+char* numToDay(int nums[], int size) {
 	size_t i;
 	char days[100];
-	
+
 	if (nums[i] == 1) {
 		return "hétfő";
 	}
@@ -410,7 +508,7 @@ void removeStringTrailingNewline(char* str) {
 
 bool contDays(char* nums, int day) {
 	int i;
-	
+
 	for (i = 0; i < 7; ++i) {
 		if (nums[i] == day) {
 			return true;
@@ -446,15 +544,15 @@ void getApplicantsByPlace(applicants* applicantList, int size) {
 
 	/*for (i = 0; i < size; ++i) {
 		printf("Nev: %s", applicantList[i].name);
-		printf("\n");		
+		printf("\n");
 	}*/
 
 
-	
+
 	printf("\n\n\n----------Utasok listazasa hely szerint----------\n\n");
 	printf("Add meg melyik helyszin szerint szeretnel listazni!\n");
 	printDays();
-	printf("\n8.)     Osszes helyszin listazasa\n");
+	printf("8.) Osszes helyszin listazasa\n");
 	printf("\nValasztott hely: ");
 	while (c != 1 || c != 2 || c != 3 || c != 4 || c != 5 || c != 6 || c != 7 || c != 8) {
 		scanf("\n%c", &c);
@@ -465,7 +563,7 @@ void getApplicantsByPlace(applicants* applicantList, int size) {
 			int j;
 			for (j = 0; j < 7; ++j) {
 				if (applicantList[i].daysInNum[j] == (c - '0')) {
-					printf("%d. jelentkezo: %s\n", num+1, applicantList[i].name);
+					printf("%d. jelentkezo: %s\n", num + 1, applicantList[i].name);
 					num++;
 				}
 				if ((c - '0') == 8) {
@@ -477,7 +575,7 @@ void getApplicantsByPlace(applicants* applicantList, int size) {
 
 		}
 
-		
+
 		printf("\nA valasztott napon %d db jelentkezo van regisztralva\n", num);
 		printf("Visszateres a menube..\n");
 		break;
@@ -486,13 +584,13 @@ void getApplicantsByPlace(applicants* applicantList, int size) {
 
 
 void writeToFile(applicants* applicantList, int size, char* fileName) {
-	
+
 	char applicantText[80];
 	char str[8];
 	remove(fileName);
 	FILE* fl;
 	fl = fopen(fileName, "w");
-	
+
 	//napok
 	/*applicantText[0] = 0;
 	strcat(applicantText, "10,2,3,4,5,6,7;");
@@ -500,18 +598,18 @@ void writeToFile(applicants* applicantList, int size, char* fileName) {
 
 	int i;
 	for (i = 0; i < size; ++i) {
-		
+
 		if (strlen(applicantList[i].name) != 0) {
 			applicantText[0] = 0;
 			str[0] = 0;
-			
+
 			strcat(applicantText, applicantList[i].name);
 			strcat(applicantText, ";");
 			strcat(applicantText, applicantList[i].address);
-			strcat(applicantText, ";");	
-			sprintf(str, "%d%d%d%d%d%d%d\0", applicantList[i].daysInNum[0], applicantList[i].daysInNum[1], applicantList[i].daysInNum[2], 
+			strcat(applicantText, ";");
+			sprintf(str, "%d%d%d%d%d%d%d\0", applicantList[i].daysInNum[0], applicantList[i].daysInNum[1], applicantList[i].daysInNum[2],
 				applicantList[i].daysInNum[3], applicantList[i].daysInNum[4], applicantList[i].daysInNum[5], applicantList[i].daysInNum[6]);
-			
+
 			//str[7] = '\0';
 
 			/*int j;
@@ -543,13 +641,13 @@ void writeToFile(applicants* applicantList, int size, char* fileName) {
 
 			//printf("szamok:    %s\n", str);
 
-			
+
 			strcat(applicantText, str);
 			strcat(applicantText, ";");
 
 			//printf("%s\n", applicantText);
 			fprintf(fl, "%s\n", applicantText);
-			
+
 		}
 	}
 	fclose(fl);
@@ -604,8 +702,8 @@ void loadData(char* fileName, applicants* applicantList) {
 		sscanf(line, "%[^;];%[^;];%[^;]",
 			applicantList[i].name, applicantList[i].address, temp);
 		//strToNum(temp, applicantList[i].daysInNum);
-		
-		
+
+
 
 
 		/*int j;
@@ -615,10 +713,10 @@ void loadData(char* fileName, applicants* applicantList) {
 		}*/
 
 		int z = atoi(temp);
-		
-		
+
+
 		char arr[8]; //8 digits + \0
-		
+
 		if ((snprintf(arr, 8, "%d", z) == 7)) { //return the 8 characters that were printed
 			int c;
 			for (c = 0; c < 7; c++)
@@ -626,9 +724,9 @@ void loadData(char* fileName, applicants* applicantList) {
 		}
 
 
-		int j = 0; 
+		int j = 0;
 		while (j < 7 && applicantList[i].daysInNum[j] != 9) {
-			
+
 			workers[applicantList[i].daysInNum[j] - 1]++;
 			++j;
 		}
@@ -639,11 +737,11 @@ void loadData(char* fileName, applicants* applicantList) {
 			printf("%d::", applicantList[i].daysInNum[c]);*/
 
 
-		//printf("betoltotte       %d::\n", z);
-		//printf("jol tölti be: %s\n", line);
+			//printf("betoltotte       %d::\n", z);
+			//printf("jol tölti be: %s\n", line);
 		++i;
 	}
-	
+
 	fclose(fl);
 }
 
@@ -666,19 +764,20 @@ void printMenu() {
 	printf("2.)	Jelentkezo modositasa\n");
 	printf("3.)	Jelentkezes torlese\n");
 	printf("4.)	Jelentkezok listazasa nap szerint\n");
-	printf("5.)     Kilepes\n\nValasztott funkcio: ");
+	printf("5.)     Napi jelentes kuldese\n");
+	printf("6.)     Kilepes\n\nValasztott funkcio: ");
 }
 void printDays() {
-	printf("1.)	Hétfő\n");
-	printf("2.)	Kedd\n");
-	printf("3.)	Szerda\n");
-	printf("4.)	Csütörtök\n");
+	printf("1.) Hétfő\n");
+	printf("2.) Kedd\n");
+	printf("3.) Szerda\n");
+	printf("4.) Csütörtök\n");
 	printf("5.) Péntek\n");
 	printf("6.) Szombat\n");
 	printf("7.) Vasárnap\n");
 }
 void printFreeDays() {
-	printf("\nHétfő: %d szabad hely\n", limit[0]-workers[0]);
+	printf("\nHétfő: %d szabad hely\n", limit[0] - workers[0]);
 	printf("Kedd: %d szabad hely\n", limit[1] - workers[1]);
 	printf("Szerda: %d szabad hely\n", limit[2] - workers[2]);
 	printf("Csütörtök: %d szabad hely\n", limit[3] - workers[3]);
