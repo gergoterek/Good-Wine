@@ -38,13 +38,13 @@ void strToNum(char* str, int* nums);
 void printMenu();
 void printDays();
 void printFreeDays();
-void handler(int signumber);
+void handler(int signumber, siginfo_t* info, void* nonused);
 
 char fileName[] = "applicantsdata.txt";
 int limit[7] = { 10, 8, 5, 4, 5, 6, 7 };
 int needed[7] = { 9, 7, 4, 4, 4, 5, 4 };
 int workers[7] = { 0,0,0,0,0,0,0 };
-
+int munkaNum = 0;
 int main() {
 	//Torlesnel ellenorzi, hogy volt-e adat, amit toroltunk. Csak akkor csokkenti a size-ot és valtoztatja a filet
 	applicants* applicantList = (applicants*)malloc(sizeof(applicants) * MAX_SIZE);
@@ -106,8 +106,9 @@ void loadMenu(applicants* applicantList, int size) {
 		}
 	}
 }
-void handler(int signumber) {
-	//printf("Signal with number %i has arrived\n", signumber);
+
+void handler(int signumber, siginfo_t* info, void* nonused) {
+	munkaNum = info->si_value.sival_int;
 }
 
 void sendToOffice(applicants* applicantList, int size) {
@@ -164,6 +165,13 @@ void sendToOffice(applicants* applicantList, int size) {
 
 		//waitpid(child, &status, 0);
 		//wait(&status);
+		struct sigaction sigact;
+
+		sigact.sa_sigaction = handler; //instead of sa_handler, we use the 3 parameter version
+		sigemptyset(&sigact.sa_mask);
+		sigact.sa_flags = SA_SIGINFO; //we need to set the siginfo flag 
+		sigaction(SIGTERM, &sigact, NULL);
+
 		pid_t child2 = fork();
 		if (child2 < 0) { perror("The fork2 calling was not succesful\n"); exit(1); }
 		if (child2 > 0) //the parent process, vezetés
@@ -217,7 +225,14 @@ void sendToOffice(applicants* applicantList, int size) {
 			//waitpid(child2, &status, 0);
 			fflush(NULL);
 			close(pipefd2[1]);
-			sleep(3);
+			sleep(1);
+
+			pause();
+			if (munkaNum != 0) {
+				printf("\n\n\n\nVEZETOTOL MEGJOTT A NAPI ADAT: %i MUNKAST SZALLITOTT KI\n", munkaNum);
+			}
+			else { printf("\nHiba tortenhetett!\n"); }
+			sleep(1);
 			kill(child2, SIGKILL);
 			//printf("\nSzulo2 befejezte!\n");
 			//waitpid(child, &status, 0);
@@ -249,7 +264,7 @@ void sendToOffice(applicants* applicantList, int size) {
 			while (i < s) {
 				read(pipefd2[0], &len, sizeof(int));
 				read(pipefd2[0], app[i], len);
-				printf("Gyerek2 olvasta uzenetet:   %s\n", app[i]);
+				printf("%i. MUNKAS: %s\n", i + 1, app[i]);
 				++i;
 			}
 
@@ -260,29 +275,36 @@ void sendToOffice(applicants* applicantList, int size) {
 			read(pipefd2[0], &len, sizeof(int));
 			read(pipefd2[0], melo[1], len); // reading max 100 chars
 
-			printf("\n\nJARATVEZETO OLVASTA A MELOHELYET: %s, TEENDO: %s\n", melo[0], melo[1]);
+
 			//printf("\nMai melo helye:   %s, ideje: %s\n", melo[0], melo[1]);
 			close(pipefd2[0]);
 
 			int needWork = needed[day] - workers[day];
-			printf("\n\nENNYI kell: %i", needWork);
+
 			srand(time(0));
 			i = 0;
 			if (needWork > 0) {
-				while (i < needWork + 1) {
+				printf("\n\nMEG %i EMBER KELL A CSAPATBA!\n", needWork);
+				while (i < needWork) {
 					int ran = rand() % size;
-					printf("\n\nA KISORSOLT SZERENCSES EMBER:        %s", applicantList[ran].name);
+					printf("\nA KISORSOLT SZERENCSES %i. MUNKAS:        %s", s + i + 1, applicantList[ran].name);
 					++i;
 				}
 			}
+			else {
+				needWork = 0;
+				printf("\n\nMEGVAN MINDENKI, MEHETUNK MELOZNI!");
+			}
+			printf("\n\nJARATVEZETO ELVITTE A %i MUNKAST %s-BA, HOGY VEGEZZEK EL A %s-t\n", s + needWork, melo[0], melo[1]);
+			printf("\nJARATVEZETO KULDI A VEZETOSEGNEK A MUNKASOK SZAMAT: %i\n", s + needWork);
+			union sigval s_value_int = { s + needWork };
+			sigqueue(getppid(), SIGTERM, s_value_int);
 
 
-
-
-			pause();
 			printf("\nGyerek2 befejezte!\n");
+			pause();
 		}
-		sleep(2);
+		//sleep(1);
 		waitpid(child, &status, 0);
 		waitpid(child2, &status, 0);
 		printf("Szulo1 befejezte!\n");
@@ -648,7 +670,6 @@ void removeStringTrailingNewline(char* str) {
 		str[length - 1] = '\0';
 }
 
-
 bool contDays(char* nums, int day) {
 	int i;
 
@@ -659,9 +680,6 @@ bool contDays(char* nums, int day) {
 	}
 	return false;
 }
-
-
-
 
 void getApplicantsByPlace(applicants* applicantList, int size) {
 
@@ -711,7 +729,6 @@ void getApplicantsByPlace(applicants* applicantList, int size) {
 		break;
 	}
 }
-
 
 void writeToFile(applicants* applicantList, int size, char* fileName) {
 
@@ -817,7 +834,6 @@ void strToNum(char* str, int* nums) {
 	}
 }
 
-
 void loadData(char* fileName, applicants* applicantList) {
 	char line[80];
 	FILE* fl;
@@ -875,8 +891,6 @@ void loadData(char* fileName, applicants* applicantList) {
 	fclose(fl);
 }
 
-
-
 void printMenu() {
 	printf("\n\n\n\n--------------------MENU--------------------\n\n");
 	printf("\nMilyen funkciot szeretnel hasznalni? Nyomd le a megfelelo szamot!\n\n");
@@ -921,8 +935,6 @@ void printFreeDays() {
 //	strcat(applicantText, d);
 //	strcat(applicantText, ";");
 //}
-
-
 
 
 //char* convertNumberIntoArray(unsigned int number) {
